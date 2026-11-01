@@ -31,6 +31,32 @@
       --sat: 55%; --lt: 68%; --bgl: 24%;
     }
   }
+
+  /* ---- تقویم شمسی ---- */
+  [hidden] { display: none !important; }
+  .datebtn {
+    width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    font: inherit; font-weight: normal; text-align: right; color: var(--ink); background: var(--field);
+    border: 2px solid var(--rule); border-radius: 12px; padding: 10px 12px; min-height: 48px; cursor: pointer;
+  }
+  .datebtn .ph { color: var(--muted); }
+  .cal { margin-top: 8px; padding: 10px; background: var(--field); border: 2px solid var(--rule); border-radius: 14px; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .cal-head button {
+    width: 44px; height: 44px; font-size: 24px; line-height: 1; border-radius: 12px; padding: 0;
+    background: var(--soft); color: var(--ink); border: 0; cursor: pointer; font-family: inherit;
+  }
+  .cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+  .cal-week span { font-size: 12.5px; color: var(--muted); padding: 2px 0 4px; }
+  .cal-week span:last-child { color: var(--margin); }
+  .cd {
+    height: 42px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--ink);
+    font: inherit; font-size: 15px; cursor: pointer;
+  }
+  .cd.fri { color: var(--margin); }
+  .cd.today { background: var(--mark); color: var(--mark-ink); font-weight: bold; }
+  .cd.sel { box-shadow: inset 0 0 0 2px var(--margin); font-weight: bold; }
+  .cd:focus-visible, .cal-head button:focus-visible, .datebtn:focus-visible { outline: 3px solid var(--margin); outline-offset: 2px; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { scroll-behavior: smooth; }
   body {
@@ -309,6 +335,50 @@ function whenText(d) {
   if (df === 1) return { t: 'تحویل: فردا', hot: true };
   return { t: 'تحویل: ' + faDate(d), hot: false };
 }
+
+// ================= تقویم شمسی =================
+const JP = (() => { try { return new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', { year: 'numeric', month: 'numeric', day: 'numeric' }); } catch (e) { return null; } })();
+function jparts(d) { const o = {}; JP.formatToParts(d).forEach(p => { if (p.type !== 'literal') o[p.type] = parseInt(p.value, 10); }); return o; }
+const jalaliOK = (() => { try { const p = jparts(new Date(2026, 10, 1, 12)); return p.year === 1405 && p.month === 8; } catch (e) { return false; } })();
+function monthStart(d) { const p = jparts(d); const s = new Date(d); s.setHours(12, 0, 0, 0); s.setDate(s.getDate() - (p.day - 1)); return s; }
+function monthLen(start) { const m = jparts(start).month; let n = 0; const t = new Date(start); while (jparts(t).month === m && n < 32) { n++; t.setDate(t.getDate() + 1); } return n; }
+function shiftMonth(start, dir) { const t = new Date(start); t.setDate(t.getDate() + (dir > 0 ? monthLen(start) : -1)); return monthStart(t); }
+function fromIso(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d, 12); }
+const fullFa = iso => fromIso(iso).toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+let calStart = null;
+
+function dueField(v) {
+  if (!jalaliOK) return `<input id="due" type="date" value="${esc(v)}">`;
+  return `<input id="due" type="hidden" value="${esc(v)}">
+    <button type="button" class="datebtn" id="duebtn" data-act="due-open" aria-expanded="false" aria-controls="cal">
+      <span id="duetxt" class="${v ? '' : 'ph'}">${v ? esc(fullFa(v)) : 'انتخاب تاریخ'}</span><span aria-hidden="true">▾</span>
+    </button>
+    <div id="cal" class="cal" hidden></div>`;
+}
+function syncDueLabel() {
+  const t = document.getElementById('duetxt'); if (!t) return;
+  const v = val('due');
+  t.textContent = v ? fullFa(v) : 'انتخاب تاریخ';
+  t.className = v ? '' : 'ph';
+}
+function renderCal() {
+  const box = document.getElementById('cal'); if (!box || !calStart) return;
+  const len = monthLen(calStart), lead = (calStart.getDay() + 1) % 7;
+  const sel = val('due'), today = ymd(new Date());
+  const title = calStart.toLocaleDateString('fa-IR-u-ca-persian', { month: 'long', year: 'numeric' });
+  let cells = '';
+  for (let i = 0; i < lead; i++) cells += '<span></span>';
+  for (let i = 0; i < len; i++) {
+    const d = new Date(calStart); d.setDate(d.getDate() + i);
+    const iso = ymd(d), col = (lead + i) % 7;
+    cells += `<button type="button" class="cd${col === 6 ? ' fri' : ''}${iso === today ? ' today' : ''}${iso === sel ? ' sel' : ''}" data-act="cal-day" data-iso="${iso}" aria-label="${esc(fullFa(iso))}">${toFa(i + 1)}</button>`;
+  }
+  box.innerHTML = `<div class="cal-head">
+      <button type="button" data-act="cal-prev" aria-label="ماه قبل">›</button><b>${esc(title)}</b>
+      <button type="button" data-act="cal-next" aria-label="ماه بعد">‹</button></div>
+    <div class="cal-week">${['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>`;
+}
 const hueOf = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const safeUrl = u => /^https?:\/\//i.test(u) ? u : '';
 
@@ -499,8 +569,8 @@ function renderTeacher() {
         <div class="chips small">${subjects.map(s => `<button data-act="pick-subj" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>
         <label for="text">متن مشق</label>
         <textarea id="text" placeholder="مثلاً صفحه ۴۲ تمرین ۱ تا ۵">${editing ? esc(editing.text) : ''}</textarea>
-        <label for="due">مهلت تحویل (اختیاری)</label>
-        <input id="due" type="date" value="${editing ? esc(editing.due || '') : ''}">
+        <label for="${jalaliOK ? 'duebtn' : 'due'}">مهلت تحویل (اختیاری)</label>
+        ${dueField(editing ? (editing.due || '') : '')}
         <div class="chips small">
           <button data-act="pick-due" data-d="0">امروز</button>
           <button data-act="pick-due" data-d="1">فردا</button>
@@ -621,9 +691,25 @@ const actions = {
   'pick-subj': el => { document.getElementById('subj').value = el.dataset.v; },
   'pick-due': el => {
     const d = el.dataset.d;
-    if (d === '') { document.getElementById('due').value = ''; return; }
+    if (d === '') { document.getElementById('due').value = ''; syncDueLabel(); return; }
     const t = new Date(); t.setDate(t.getDate() + Number(d));
     document.getElementById('due').value = ymd(t);
+    syncDueLabel();
+    const c = document.getElementById('cal'); if (c) c.hidden = true;
+  },
+  'due-open': el => {
+    const c = document.getElementById('cal'); if (!c) return;
+    const open = c.hidden;
+    c.hidden = !open; el.setAttribute('aria-expanded', String(open));
+    if (open) { const v = val('due'); calStart = monthStart(v ? fromIso(v) : new Date()); renderCal(); }
+  },
+  'cal-prev': () => { calStart = shiftMonth(calStart, -1); renderCal(); },
+  'cal-next': () => { calStart = shiftMonth(calStart, 1); renderCal(); },
+  'cal-day': el => {
+    document.getElementById('due').value = el.dataset.iso;
+    syncDueLabel();
+    const c = document.getElementById('cal'); c.hidden = true;
+    const b = document.getElementById('duebtn'); if (b) { b.setAttribute('aria-expanded', 'false'); b.focus(); }
   },
 
   'save': () => busy(async () => {
