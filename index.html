@@ -205,6 +205,30 @@
   .choose b { font-size: 17px; display: block; }
   .choose small { color: var(--muted); }
   .banner { margin: 12px 14px 0; padding: 10px 14px; border-radius: 10px; background: var(--soft); color: var(--ink); font-size: 14px; border-inline-start: 4px solid var(--margin); }
+  select {
+    width: 100%; font: inherit; color: var(--ink); background: var(--field);
+    border: 2px solid var(--rule); border-radius: 10px; padding: 9px 12px; min-height: 48px;
+  }
+  select:focus-visible { outline: 3px solid var(--margin); outline-offset: 2px; }
+  .hint { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--muted); background: var(--soft); border-radius: 10px; padding: 8px 12px; margin: 0 0 14px; }
+  .hint svg { flex: none; margin-top: 5px; }
+  .roster { margin-top: 12px; border-top: 1px dashed var(--rule); }
+  .rrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px dashed var(--rule); }
+  .rname { flex: 1 1 140px; font-weight: bold; word-break: break-word; }
+  .rpin { font-size: 18px; letter-spacing: 3px; min-width: 76px; text-align: center; background: var(--soft); border-radius: 8px; padding: 0 8px; }
+  .rep-card { border-top: 1px dashed var(--rule); margin-top: 14px; padding-top: 10px; --c: hsl(var(--h, 220) var(--sat) var(--lt)); --cb: hsl(var(--h, 220) 70% var(--bgl)); }
+  .rep-text { margin-top: 4px; word-break: break-word; }
+  .rep-nums { display: flex; gap: 16px; flex-wrap: wrap; margin: 6px 0; font-size: 14px; }
+  .rep-nums b { font-size: 18px; }
+  details.rep { margin-top: 6px; background: var(--soft); border-radius: 10px; padding: 4px 12px; }
+  details.rep summary { cursor: pointer; padding: 4px 0; font-size: 14px; font-weight: bold; }
+  details.rep p { padding: 2px 0 8px; font-size: 14px; word-break: break-word; }
+  .arow { padding: 11px 0; border-bottom: 1px dashed var(--rule); }
+  .ahead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .achips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+  .cchip { display: inline-flex; align-items: center; gap: 4px; background: var(--soft); border-radius: 99px; padding: 0 4px 0 10px; font-size: 13px; }
+  .cchip button { width: 26px; height: 26px; border-radius: 50%; font-size: 16px; line-height: 1; color: var(--muted); }
+  .cchip button:focus-visible { outline: 3px solid var(--margin); outline-offset: 1px; }
   #toast {
     position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translate(-50%, 30px);
     background: var(--ink); color: var(--paper); padding: 10px 20px; border-radius: 99px; font-size: 14px; max-width: 90%;
@@ -247,10 +271,10 @@ const store = {
     if (!configured) return mem[key] ? JSON.parse(mem[key]) : null;
     try {
       const r = await fetch(`${API}?id=eq.${docId(key)}&select=data`, { headers: authHeaders() });
-      if (!r.ok) return null;
+      if (!r.ok) return undefined;
       const rows = await r.json();
       return rows.length ? rows[0].data : null;
-    } catch (e) { return null; }
+    } catch (e) { return undefined; }
   },
   async set(key, val, shared) {
     if (!shared) {
@@ -267,6 +291,15 @@ const store = {
       });
       return r.ok;
     } catch (e) { return false; }
+  },
+  // همه‌ی ردیف‌هایی که کلیدشون با prefix شروع میشه (برای گزارش معلم)
+  async list(prefix) {
+    if (!configured) return Object.keys(mem).filter(k => k.startsWith(prefix)).map(k => ({ key: k, data: JSON.parse(mem[k]) }));
+    try {
+      const r = await fetch(`${API}?id=like.${encodeURIComponent(docId(prefix))}*&select=id,data`, { headers: authHeaders() });
+      if (!r.ok) return undefined;
+      return (await r.json()).map(x => ({ key: x.id, data: x.data }));
+    } catch (e) { return undefined; }
   }
 };
 
@@ -286,6 +319,9 @@ const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
 const genCode = () => Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
 const val = id => (document.getElementById(id) || {}).value || '';
 const DEFAULT_SUBJECTS = ['ریاضی', 'فارسی', 'علوم', 'اجتماعی', 'قرآن', 'انگلیسی'];
+const faToEn = s => String(s).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+const genPin = () => String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+const fmtTime = ts => new Date(ts).toLocaleString('fa-IR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 const IC = {
   check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -402,6 +438,9 @@ async function loadDone(code) { return new Set((await store.get(doneKey(code), f
 // ================= وضعیت =================
 let view = 'home', tab = 'login', session = null, cls = null, editId = null;
 let studentCode = '', filter = 'all', subjFilter = '', doneSet = new Set(), lastCode = '', lastSync = 0;
+let student = null, rosterOpen = false, report = null, actQueue = Promise.resolve();
+let acct = null, myClasses = [];
+let admin = false, adminSetup = false, accts = [], allClasses = [], lastCreds = [], acctFilter = '', addClsSel = '', newClsSel = '';
 
 function banner() {
   return configured ? '' : `<div class="banner">برنامه هنوز به دیتابیس وصل نشده، پس اطلاعات فقط تا بستن این صفحه می‌مونه. (دو مقدار بالای فایل رو پر کن.)</div>`;
@@ -417,13 +456,13 @@ function topBar(backAct, right) {
 
 // ================= نمایش =================
 function render() {
-  ({ home: renderHome, student: renderStudent, teacherAuth: renderTeacherAuth, teacher: renderTeacher })[view]();
+  ({ home: renderHome, student: renderStudent, teacherAuth: renderTeacherAuth, teacher: renderTeacher, adminAuth: renderAdminAuth, admin: renderAdmin })[view]();
 }
 
 function renderHome() {
   $app.innerHTML = `
     ${cover(`<div class="label"><small>این دفتر مال کلاسه</small><h1>مشق‌های <mark>امروز</mark></h1></div>
-             <p class="sub">معلم می‌نویسه، دانش‌آموز می‌بینه.</p>`, topBar())}
+             <p class="sub">معلم می‌نویسه، دانش‌آموز می‌بینه.</p>`, topBar(null, `<button class="chip-btn" data-act="go-admin">مدیر</button>`))}
     ${banner()}
     <div class="wrap">
       <div class="choose">
@@ -435,14 +474,46 @@ function renderHome() {
 }
 
 function renderStudent() {
+  if (!cls && acct) return renderMyClasses();
   if (!cls) {
     $app.innerHTML = `
       ${cover(`<div class="label"><small>کلاس‌ت رو پیدا کن</small><h1>کد <mark>کلاس</mark></h1></div>`, topBar('home'))}
       ${banner()}
-      <div class="wrap"><div class="panel">
-        <label for="code" style="margin-top:0">کدی که معلم بهت داده</label>
+      <div class="wrap">
+        <div class="panel" style="margin-top:0">
+          <h2>ورود با حساب</h2>
+          <label for="au">نام کاربری</label>
+          <input id="au" class="ltr" autocomplete="username" autocapitalize="none" spellcheck="false">
+          <label for="apw">رمز</label>
+          <input id="apw" type="password" autocomplete="current-password">
+          <button class="btn block" data-act="acct-login">ورود و دیدن کلاس‌های من</button>
+        </div>
+        <div class="panel">
+        <h2>یا با کد کلاس</h2>
+        <label for="code">کدی که معلم بهت داده</label>
         <input id="code" class="code" maxlength="8" autocomplete="off" value="${esc(studentCode)}" placeholder="k7m2p">
         <button class="btn block" data-act="open-class">دیدن مشق‌ها</button>
+      </div></div>`;
+    return;
+  }
+
+  if (cls.students.length && !student) {
+    const pinList = cls.students.filter(x => !x.acct);
+    const opts = [...pinList].sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    $app.innerHTML = `
+      ${cover(`<div class="label"><small>${esc(cls.name)}</small><h1>ورود <mark>دانش‌آموز</mark></h1></div>`, topBar('change-class'))}
+      ${banner()}
+      <div class="wrap"><div class="panel" style="margin-top:0">
+        ${pinList.length ? `
+        <label for="sname" style="margin-top:0">اسمت رو انتخاب کن</label>
+        <select id="sname"><option value="">انتخاب کن…</option>${opts}</select>
+        <label for="spin">رمز ۴ رقمی (معلم بهت داده)</label>
+        <input id="spin" class="code" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        <button class="btn block" data-act="stu-login">ورود</button>
+        <p class="muted" style="margin-top:14px">حساب داری؟ با نام کاربری و رمز وارد شو.</p>
+        <button class="btn ghost block" style="margin-top:8px" data-act="goto-acct-login">ورود با حساب</button>`
+        : `<p>این کلاس با حساب دانش‌آموزی کار می‌کنه. با نام کاربری و رمز خودت وارد شو.</p>
+        <button class="btn block" data-act="goto-acct-login">ورود با حساب</button>`}
       </div></div>`;
     return;
   }
@@ -472,14 +543,15 @@ function renderStudent() {
 
   $app.innerHTML = `
     ${cover(`
-      <div class="label"><small>دفتر مشق کلاس</small><h1>${esc(cls.name)}</h1></div>
+      <div class="label"><small>${student ? 'سلام ' + esc(student.name) : 'دفتر مشق کلاس'}</small><h1>${esc(cls.name)}</h1></div>
       <div class="progress">
         <div class="row"><span>${active.length ? (left ? toFa(left) + ' مشق مونده' : 'همه‌ی مشق‌ها انجام شد') : 'مشق فعالی نیست'}</span><span>${active.length ? toFa(pct) + '٪' : ''}</span></div>
         <div class="track"><div class="fill" style="width:${pct}%"></div></div>
       </div>`,
-      topBar('change-class', `<button class="chip-btn" data-act="refresh">${IC.refresh} به‌روزرسانی</button>`))}
+      topBar('change-class', `<span style="display:flex;gap:8px">${student && !acct ? `<button class="chip-btn" data-act="stu-logout">${IC.out} خروج</button>` : ''}<button class="chip-btn" data-act="refresh">${IC.refresh} به‌روزرسانی</button></span>`))}
     ${banner()}
     <div class="wrap">
+      <p class="hint">${IC.refresh}<span>برای دیدن مشق‌های جدید روی دکمه‌ی «به‌روزرسانی» (بالای صفحه) بزنید.</span></p>
       ${cls.notice ? `<div class="note"><b>اطلاعیه‌ی معلم</b><p>${esc(cls.notice)}</p></div>` : ''}
       <div class="seg" style="margin-top:16px" role="group" aria-label="فیلتر وضعیت">
         <button data-act="filter" data-v="all" aria-pressed="${filter === 'all'}">همه</button>
@@ -491,7 +563,7 @@ function renderStudent() {
         ${subjects.map(s => `<button data-act="subj" data-v="${esc(s)}" aria-pressed="${subjFilter === s}">${esc(s)}</button>`).join('')}
       </div>` : ''}
       ${list.length ? `<div class="sheet">${sheet}</div>` : `<div class="sheet"><div class="empty"><b>${emptyMsg[0]}</b>${emptyMsg[1]}</div></div>`}
-      <p class="muted" style="text-align:center;margin-top:14px">تیک‌ها فقط روی همین گوشی ذخیره میشن.</p>
+      <p class="muted" style="text-align:center;margin-top:14px">${student ? 'تیک‌هات برای معلم هم نشون داده میشه.' : 'تیک‌ها فقط روی همین گوشی ذخیره میشن.'}</p>
     </div>`;
 }
 
@@ -593,6 +665,9 @@ function renderTeacher() {
         <div class="row"><button class="btn ghost" data-act="save-notice">ذخیره اطلاعیه</button></div>
       </div>
 
+      ${rosterPanel()}
+      ${reportPanel()}
+
       <div class="day" style="padding:18px 4px 0;color:var(--ink)">مشق‌های ثبت‌شده <span class="n">${toFa(list.length)}</span></div>
       ${list.length ? `<div class="sheet" style="margin-top:6px">${list.map(h => entry(h, true)).join('')}</div>`
         : `<div class="sheet"><div class="empty"><b>هنوز مشقی ننوشتی</b>از فرم بالا اولین مشق رو ثبت کن.</div></div>`}
@@ -608,10 +683,10 @@ function shareLink(code) {
 async function openClass(code, silent) {
   const data = await store.get('class:' + code, true);
   if (!data) {
-    if (!silent) { cls = null; toast('کلاسی با این کد پیدا نشد. کد رو دوباره چک کن.', true); }
+    if (!silent) { cls = null; toast(data === undefined ? 'اتصال به اینترنت برقرار نشد. دوباره امتحان کن.' : 'کلاسی با این کد پیدا نشد. کد رو دوباره چک کن.', true); }
     return false;
   }
-  cls = { ...data, code, homework: data.homework || [] };
+  cls = { ...data, code, homework: data.homework || [], students: data.students || [] };
   lastSync = Date.now();
   return true;
 }
@@ -629,20 +704,214 @@ async function busy(fn) {
 }
 
 async function enterStudent(code) {
-  studentCode = code; view = 'student';
+  studentCode = code; view = 'student'; student = null;
   if (await openClass(code)) {
     doneSet = await loadDone(code);
     lastCode = code; await store.set('last-code', code, false);
+    if (cls.students.length) {
+      const saved = await store.get('stu:' + code, false);
+      const me = saved && cls.students.find(x => x.id === saved.id && String(x.pin) === String(saved.pin));
+      if (me) { student = { id: me.id, name: me.name }; await syncActivity(); }
+    }
   }
   render();
 }
 
+// ---------- ثبت «دیدن» و «انجام شد» برای دانش‌آموزی که وارد شده ----------
+const actKey = () => `act:${cls.code}:${student.id}`;
+async function syncActivity() {
+  if (!student || !cls) return;
+  const act = await store.get(actKey(), true);
+  if (act === undefined) return;               // اینترنت قطع بود، چیزی ننویس
+  const a = act || { seen: {}, done: {}, last: 0 };
+  a.seen = a.seen || {}; a.done = a.done || {};
+  const now = Date.now();
+  let changed = !act;
+  cls.homework.forEach(h => { if (!a.seen[h.id]) { a.seen[h.id] = now; changed = true; } });
+  if (now - (a.last || 0) > 30 * 60 * 1000) changed = true;
+  doneSet = new Set(Object.keys(a.done));
+  if (changed) { a.last = now; await store.set(actKey(), a, true); }
+}
+
+// ---------- حساب دانش‌آموز ----------
+const randStr = n => { const a = new Uint32Array(n); crypto.getRandomValues(a); return Array.from(a, v => ALPHA[v % ALPHA.length]).join(''); };
+const acctHash = (u, pw) => hash('acct:' + u + ':' + pw);
+
+async function loadMyClasses() {
+  const docs = await Promise.all(acct.classes.map(c => store.get('class:' + c, true)));
+  myClasses = [];
+  acct.classes.forEach((c, i) => {
+    const d = docs[i];
+    if (d && (d.students || []).some(x => x.id === 'a' + acct.u)) {
+      myClasses.push({ code: c, name: d.name, active: (d.homework || []).filter(h => { const df = dayDiff(h.due); return df === null || df >= 0; }).length });
+    }
+  });
+}
+
+async function enterAccountClass(code) {
+  studentCode = code; view = 'student'; student = null;
+  if (!(await openClass(code))) return render();
+  const me = cls.students.find(x => x.id === 'a' + acct.u);
+  if (!me) { cls = null; toast('تو توی این کلاس نیستی.', true); return render(); }
+  student = { id: me.id, name: me.name };
+  doneSet = new Set();
+  await syncActivity();
+  render();
+}
+
+function renderMyClasses() {
+  $app.innerHTML = `
+    ${cover(`<div class="label"><small>سلام ${esc(acct.name)}</small><h1>کلاس‌های <mark>من</mark></h1></div>`,
+      topBar(null, `<span style="display:flex;gap:8px"><button class="chip-btn" data-act="acct-logout">${IC.out} خروج</button><button class="chip-btn" data-act="my-refresh">${IC.refresh} به‌روزرسانی</button></span>`))}
+    ${banner()}
+    <div class="wrap">
+      <p class="hint">${IC.refresh}<span>برای دیدن کلاس‌ها و مشق‌های جدید روی دکمه‌ی «به‌روزرسانی» (بالای صفحه) بزنید.</span></p>
+      ${myClasses.length ? `<div class="choose">${myClasses.map(c => `<button data-act="open-my-class" data-c="${esc(c.code)}"><span class="ic">${IC.book}</span><span><b>${esc(c.name)}</b><small>${c.active ? toFa(c.active) + ' مشق فعال' : 'مشق فعالی نیست'}</small></span></button>`).join('')}</div>`
+        : `<div class="sheet"><div class="empty"><b>هنوز به کلاسی اضافه نشدی</b>از مدیر یا معلمت بخواه حسابت رو به کلاس اضافه کنه.</div></div>`}
+    </div>`;
+}
+
+// ---------- مدیر ----------
+async function loadAdminData() {
+  const [a, c] = await Promise.all([store.list('acct:'), store.list('class:')]);
+  if (a === undefined || c === undefined) { toast('دریافت اطلاعات ممکن نشد. اینترنت رو چک کن.', true); return false; }
+  const idOf = x => x.key.split(/[:_]/).pop();
+  accts = a.filter(x => !x.data.deleted).map(x => ({ u: idOf(x), name: x.data.name || '', classes: x.data.classes || [] }))
+    .sort((p, q) => p.name.localeCompare(q.name, 'fa'));
+  allClasses = c.map(x => ({ code: idOf(x), name: x.data.name || idOf(x), count: (x.data.students || []).length }))
+    .sort((p, q) => p.name.localeCompare(q.name, 'fa'));
+  return true;
+}
+
+function renderAdminAuth() {
+  $app.innerHTML = `
+    ${cover(`<div class="label"><small>بخش مدیر</small><h1>${adminSetup ? 'ساخت رمز <mark>مدیر</mark>' : 'ورود <mark>مدیر</mark>'}</h1></div>`, topBar('home'))}
+    ${banner()}
+    <div class="wrap"><div class="panel" style="margin-top:0">
+      ${adminSetup ? `
+        <p class="muted">هنوز مدیری ساخته نشده. یه رمز انتخاب کن (حداقل ۶ حرف). از این به بعد فقط با این رمز میشه حساب‌ها رو مدیریت کرد.</p>
+        <label for="adpw">رمز مدیر</label>
+        <input id="adpw" type="password" autocomplete="new-password">
+        <button class="btn block" data-act="admin-setup">ساخت رمز مدیر</button>` : `
+        <label for="adpw" style="margin-top:0">رمز مدیر</label>
+        <input id="adpw" type="password" autocomplete="current-password">
+        <button class="btn block" data-act="admin-login">ورود</button>`}
+    </div></div>`;
+}
+
+const classOpts = (sel, first) => `<option value="">${first}</option>` + allClasses.map(c => `<option value="${esc(c.code)}"${c.code === sel ? ' selected' : ''}>${esc(c.name)} (${esc(c.code)})</option>`).join('');
+
+function credsPanel() {
+  if (!lastCreds.length) return '';
+  return `<div class="panel" id="creds"><h2>نام کاربری و رمزها</h2>
+    <p class="muted">رمزها رمزنگاری ذخیره میشن و بعد از این دیگه قابل دیدن نیستن. همین الان کپی کن یا برای بچه‌ها بفرست.</p>
+    <div class="roster">${lastCreds.map(x => `<div class="rrow"><span class="rname">${esc(x.name)}</span><b class="rpin" dir="ltr">${esc(x.u)}</b><b class="rpin" dir="ltr">${esc(x.pw)}</b></div>`).join('')}</div>
+    <div class="row"><button class="btn" data-act="copy-creds">${IC.copy} کپی همه</button><button class="btn ghost" data-act="hide-creds">بستن</button></div></div>`;
+}
+
+function acctRows() {
+  const f = acctFilter.trim().toLowerCase();
+  const list = accts.filter(a => !f || a.name.toLowerCase().includes(f) || a.u.includes(f));
+  if (!list.length) return `<div class="empty"><b>${accts.length ? 'حسابی پیدا نشد' : 'هنوز حسابی نساختی'}</b></div>`;
+  const cname = code => (allClasses.find(c => c.code === code) || {}).name || code;
+  return list.slice(0, 50).map(a => `<div class="arow">
+    <div class="ahead"><b>${esc(a.name)}</b><span class="rpin" dir="ltr">${esc(a.u)}</span></div>
+    <div class="achips">${a.classes.length ? a.classes.map(c => `<span class="cchip">${esc(cname(c))}<button data-act="acct-rmcls" data-u="${esc(a.u)}" data-c="${esc(c)}" aria-label="حذف از کلاس ${esc(cname(c))}">×</button></span>`).join('') : '<span class="muted">بدون کلاس</span>'}</div>
+    <div class="acts">
+      <button class="btn ghost sm" data-act="acct-addcls" data-u="${esc(a.u)}">افزودن به کلاس</button>
+      <button class="btn ghost sm" data-act="acct-newpw" data-u="${esc(a.u)}">رمز جدید</button>
+      <button class="btn red sm" data-act="acct-del" data-u="${esc(a.u)}">حذف</button></div></div>`).join('')
+    + (list.length > 50 ? `<p class="muted" style="margin-top:10px">فقط ۵۰ مورد اول نشون داده شد. برای پیدا کردن بقیه جستجو کن.</p>` : '');
+}
+function renderAcctList() { const el = document.getElementById('acctlist'); if (el) el.innerHTML = acctRows(); }
+
+function renderAdmin() {
+  $app.innerHTML = `
+    ${cover(`<div class="label"><small>مدیر مدرسه</small><h1>حساب <mark>دانش‌آموزان</mark></h1></div>`,
+      topBar(null, `<button class="chip-btn" data-act="admin-logout">${IC.out} خروج</button>`))}
+    ${banner()}
+    <div class="wrap">
+      <div class="panel" style="margin-top:0">
+        <h2>ساخت حساب</h2>
+        <p class="muted">هر اسم توی یه خط. نام کاربری و رمز خودکار ساخته میشه. اگه خودت می‌خوای بذاری اینجوری بنویس: اسم، نام‌کاربری، رمز</p>
+        <label for="anames">اسم‌ها</label>
+        <textarea id="anames" placeholder="علی رضایی&#10;سارا احمدی&#10;رضا کریمی، reza12، 4821" style="min-height:110px"></textarea>
+        <label for="acls">اضافه کردن به کلاس</label>
+        <select id="acls">${classOpts(newClsSel, 'بدون کلاس')}</select>
+        <button class="btn block" data-act="admin-create">ساخت حساب‌ها</button>
+      </div>
+      ${credsPanel()}
+      <div class="panel">
+        <h2>حساب‌ها (${toFa(accts.length)})</h2>
+        <div class="row"><button class="btn ghost" data-act="admin-reload">${IC.refresh} به‌روزرسانی لیست</button></div>
+        <label for="acctfilter">جستجو</label>
+        <input id="acctfilter" value="${esc(acctFilter)}" placeholder="اسم یا نام کاربری">
+        <label for="addcls">دکمه‌ی «افزودن به کلاس» هر حساب، اون رو به این کلاس اضافه می‌کنه</label>
+        <select id="addcls">${classOpts(addClsSel, 'کلاس رو انتخاب کن')}</select>
+        <div id="acctlist" style="margin-top:8px">${acctRows()}</div>
+      </div>
+    </div>`;
+}
+
+// ---------- پنل‌های معلم ----------
+function rosterPanel() {
+  const st = cls.students || [];
+  const sorted = [...st].sort((a, b) => a.name.localeCompare(b.name, 'fa'));
+  return `<div class="panel">
+    <h2>دانش‌آموزان</h2>
+    <p class="muted">${st.length ? 'هر بچه با اسم و رمز ۴ رقمی خودش وارد میشه و می‌تونی ببینی کی مشق رو دیده.' : 'تا وقتی لیست خالیه، همه بدون ورود مشق‌ها رو می‌بینن. با اضافه کردن اسم‌ها، ورود با رمز فعال میشه.'}</p>
+    <label for="newnames">اسم‌ها (هر اسم توی یه خط)</label>
+    <textarea id="newnames" placeholder="علی رضایی&#10;سارا احمدی" style="min-height:90px"></textarea>
+    <div class="row"><button class="btn" data-act="add-students">افزودن به لیست</button></div>
+    ${st.length ? `<div class="row">
+      <button class="btn ghost" data-act="toggle-roster">${rosterOpen ? 'بستن لیست' : 'لیست و رمزها (' + toFa(st.length) + ')'}</button>
+      <button class="btn ghost" data-act="copy-pins">${IC.copy} کپی رمزها</button></div>` : ''}
+    ${rosterOpen && st.length ? `<div class="roster">${sorted.map(x => `<div class="rrow">
+      <span class="rname">${esc(x.name)}</span>
+      ${x.acct ? `<b class="rpin" dir="ltr" title="حساب">${esc(x.acct)}</b>`
+               : `<b class="rpin" dir="ltr">${toFa(x.pin)}</b><button class="btn ghost sm" data-act="new-pin" data-id="${esc(x.id)}">رمز جدید</button>`}
+      <button class="btn red sm" data-act="del-student" data-id="${esc(x.id)}">حذف</button></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function reportPanel() {
+  const st = cls.students || [];
+  if (!st.length) return '';
+  let body;
+  if (!report) {
+    body = `<p class="muted">برای اینکه ببینی کی مشق‌ها رو دیده، گزارش رو دریافت کن. «دیدن» یعنی بعد از ثبت مشق، صفحه‌ی کلاس رو باز کرده.</p>`;
+  } else {
+    const rows = report.rows;
+    const never = st.filter(x => !rows[x.id]);
+    const names = list => list.map(x => esc(x.name)).join('، ');
+    const hws = [...cls.homework].sort((a, b) => b.created - a.created).slice(0, 15);
+    body = `<p class="muted">آخرین دریافت: ${esc(fmtTime(report.at))}</p>`
+      + (never.length ? `<details class="rep"><summary>هنوز وارد نشدن (${toFa(never.length)})</summary><p>${names(never)}</p></details>` : '')
+      + (hws.length ? hws.map(h => {
+        const seen = st.filter(x => rows[x.id] && rows[x.id].seen && rows[x.id].seen[h.id]);
+        const unseen = st.filter(x => !seen.includes(x));
+        const done = st.filter(x => rows[x.id] && rows[x.id].done && rows[x.id].done[h.id]);
+        const txt = h.text.length > 60 ? h.text.slice(0, 60) + '…' : h.text;
+        return `<div class="rep-card" style="--h:${hueOf(h.subject)}">
+          <span class="subj">${esc(h.subject)}</span>
+          <p class="rep-text">${esc(txt)}</p>
+          <div class="rep-nums"><span>دیدند <b>${toFa(seen.length)}</b> از ${toFa(st.length)}</span><span>انجام دادند <b>${toFa(done.length)}</b></span></div>
+          <details class="rep"><summary>ندیدند (${toFa(unseen.length)})</summary><p>${unseen.length ? names(unseen) : 'همه دیدن'}</p></details>
+          <details class="rep"><summary>دیدند (${toFa(seen.length)})</summary><p>${seen.length ? seen.map(x => esc(x.name) + ' (' + esc(fmtTime(rows[x.id].seen[h.id])) + ')').join('، ') : 'هنوز کسی ندیده'}</p></details>
+          <details class="rep"><summary>انجام دادند (${toFa(done.length)})</summary><p>${done.length ? names(done) : 'هنوز کسی انجام نداده'}</p></details>
+        </div>`;
+      }).join('') : `<p class="muted">هنوز مشقی ثبت نشده.</p>`);
+  }
+  return `<div class="panel" id="report"><h2>گزارش دیده‌شدن مشق‌ها</h2>${body}
+    <div class="row"><button class="btn" data-act="load-report">${report ? 'دریافت دوباره‌ی گزارش' : 'دریافت گزارش'}</button></div></div>`;
+}
+
 // ================= کنش‌ها =================
 const actions = {
-  'home': () => { view = 'home'; cls = null; session = null; render(); },
-  'go-student': () => { view = 'student'; cls = null; render(); },
+  'home': () => { view = 'home'; cls = null; session = null; student = null; render(); },
+  'go-student': () => { view = 'student'; cls = null; student = null; render(); },
   'go-teacher': () => { view = 'teacherAuth'; render(); },
-  'change-class': () => { cls = null; render(); },
+  'change-class': () => { cls = null; student = null; render(); },
   'tab-login': () => { tab = 'login'; render(); },
   'tab-create': () => { tab = 'create'; render(); },
   'open-last': () => busy(() => enterStudent(lastCode)),
@@ -652,14 +921,45 @@ const actions = {
     if (!code) return toast('اول کد کلاس رو بنویس.', true);
     await enterStudent(code);
   }),
-  'refresh': () => busy(async () => { if (await openClass(cls.code)) toast('به‌روز شد'); render(); }),
+  'refresh': () => busy(async () => {
+    if (await openClass(cls.code)) {
+      if (student) {
+        if (cls.students.some(x => x.id === student.id)) await syncActivity();
+        else { student = null; if (acct) { cls = null; toast('تو دیگه توی این کلاس نیستی.', true); } }
+      }
+      if (cls) toast('به‌روز شد');
+    }
+    render();
+  }),
+  'stu-login': () => busy(async () => {
+    const id = val('sname'), pin = faToEn(val('spin')).trim();
+    if (!id) return toast('اسمت رو انتخاب کن.', true);
+    if (!/^\d{4}$/.test(pin)) return toast('رمز ۴ رقمی رو بنویس.', true);
+    await openClass(cls.code, true);
+    const me = cls.students.find(x => x.id === id);
+    if (!me || String(me.pin) !== pin) return toast('رمز اشتباهه.', true);
+    student = { id: me.id, name: me.name };
+    await store.set('stu:' + cls.code, { id: me.id, pin }, false);
+    await syncActivity();
+    render();
+  }),
+  'stu-logout': () => { store.set('stu:' + cls.code, null, false); student = null; doneSet = new Set(); render(); },
   'filter': el => { filter = el.dataset.v; render(); },
   'subj': el => { subjFilter = el.dataset.v; render(); },
-  'toggle': async el => {
+  'toggle': el => {
     const id = el.dataset.id;
-    doneSet.has(id) ? doneSet.delete(id) : doneSet.add(id);
-    await store.set(doneKey(cls.code), [...doneSet], false);
+    const nowDone = !doneSet.has(id);
+    nowDone ? doneSet.add(id) : doneSet.delete(id);
     render();
+    if (!student) { store.set(doneKey(cls.code), [...doneSet], false); return; }
+    actQueue = actQueue.then(async () => {
+      const act = await store.get(actKey(), true);
+      if (act === undefined) return toast('تیک ذخیره نشد. اینترنت رو چک کن.', true);
+      const a = act || { seen: {}, done: {}, last: Date.now() };
+      a.seen = a.seen || {}; a.done = a.done || {};
+      if (nowDone) a.done[id] = Date.now(); else delete a.done[id];
+      if (!(await store.set(actKey(), a, true))) toast('تیک ذخیره نشد. اینترنت رو چک کن.', true);
+    });
   },
 
   'create': () => busy(async () => {
@@ -670,7 +970,7 @@ const actions = {
     for (let i = 0; i < 10 && (await store.get('class:' + code, true)); i++) code = genCode();
     cls = { code, name, pw: await hash(pw), homework: [], notice: '' };
     if (!(await saveClass())) { cls = null; return; }
-    session = { code }; view = 'teacher';
+    session = { code }; view = 'teacher'; report = null; rosterOpen = false;
     toast('کلاس ساخته شد. کد رو برای بچه‌ها بفرست.');
     render();
   }),
@@ -680,7 +980,7 @@ const actions = {
     if (!code || !pw) return toast('کد کلاس و رمز رو بنویس.', true);
     if (!(await openClass(code))) return;
     if (cls.pw !== (await hash(pw))) { cls = null; return toast('رمز اشتباهه.', true); }
-    session = { code }; view = 'teacher'; render();
+    session = { code }; view = 'teacher'; report = null; rosterOpen = false; render();
   }),
 
   'logout': () => { session = null; cls = null; editId = null; view = 'home'; render(); },
@@ -745,6 +1045,204 @@ const actions = {
     cls.notice = notice;
     if (await saveClass()) toast(notice ? 'اطلاعیه ذخیره شد' : 'اطلاعیه پاک شد');
     render();
+  }),
+
+  'toggle-roster': () => { rosterOpen = !rosterOpen; render(); },
+  'copy-pins': () => copyText((cls.students || []).filter(x => !x.acct).map(x => `${x.name}: ${toFa(x.pin)}`).join('\n'), 'لیست رمزها کپی شد'),
+
+  'add-students': () => busy(async () => {
+    const names = val('newnames').split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
+    if (!names.length) return toast('اول اسم‌ها رو بنویس.', true);
+    await openClass(session.code, true);
+    const st = cls.students;
+    const have = new Set(st.map(x => x.name));
+    let added = 0;
+    names.forEach(n => {
+      if (n.length > 40 || have.has(n)) return;
+      have.add(n);
+      let id; do { id = 's' + Math.random().toString(36).slice(2, 7); } while (st.some(x => x.id === id));
+      st.push({ id, name: n, pin: genPin() }); added++;
+    });
+    if (!added) return toast('این اسم‌ها قبلاً توی لیست بودن.', true);
+    if (await saveClass()) { rosterOpen = true; toast(toFa(added) + ' دانش‌آموز اضافه شد'); render(); }
+  }),
+
+  'new-pin': el => busy(async () => {
+    await openClass(session.code, true);
+    const me = cls.students.find(x => x.id === el.dataset.id);
+    if (!me) return;
+    me.pin = genPin();
+    if (await saveClass()) { toast('رمز جدید ساخته شد'); render(); }
+  }),
+
+  'del-student': el => busy(async () => {
+    if (!confirm('این دانش‌آموز از لیست حذف بشه؟')) return;
+    await openClass(session.code, true);
+    const gone = cls.students.find(x => x.id === el.dataset.id);
+    cls.students = cls.students.filter(x => x.id !== el.dataset.id);
+    if (await saveClass()) {
+      if (gone && gone.acct) {
+        const a = await store.get('acct:' + gone.acct, true);
+        if (a) { a.classes = (a.classes || []).filter(c => c !== session.code); await store.set('acct:' + gone.acct, a, true); }
+      }
+      toast('حذف شد'); render();
+    }
+  }),
+
+  'load-report': () => busy(async () => {
+    const list = await store.list(`act:${session.code}:`);
+    if (list === undefined) return toast('گزارش دریافت نشد. اینترنت رو چک کن.', true);
+    const rows = {};
+    list.forEach(x => { rows[x.key.split(/[:_]/).pop()] = x.data; });
+    await openClass(session.code, true);
+    report = { rows, at: Date.now() };
+    render();
+    const el = document.getElementById('report'); if (el) el.scrollIntoView();
+  }),
+
+  // ----- حساب دانش‌آموز -----
+  'goto-acct-login': () => { cls = null; student = null; view = 'student'; render(); },
+  'acct-login': () => busy(async () => {
+    const u = normCode(val('au')), pw = faToEn(val('apw'));
+    if (!u || !pw) return toast('نام کاربری و رمز رو بنویس.', true);
+    const d = await store.get('acct:' + u, true);
+    if (d === undefined) return toast('اتصال به اینترنت برقرار نشد. دوباره امتحان کن.', true);
+    const h = await acctHash(u, pw);
+    if (!d || d.deleted || d.pw !== h) return toast('نام کاربری یا رمز اشتباهه.', true);
+    await store.set('acct-auth', { u, pw: h }, false);
+    acct = { u, name: d.name, classes: d.classes || [] };
+    await loadMyClasses();
+    view = 'student'; cls = null; student = null; render();
+  }),
+  'acct-logout': () => { store.set('acct-auth', null, false); acct = null; cls = null; student = null; myClasses = []; view = 'home'; render(); },
+  'my-refresh': () => busy(async () => {
+    const d = await store.get('acct:' + acct.u, true);
+    if (d === undefined) return toast('اتصال به اینترنت برقرار نشد.', true);
+    if (!d || d.deleted) { toast('این حساب دیگه وجود نداره.', true); return actions['acct-logout'](); }
+    acct.classes = d.classes || [];
+    await loadMyClasses();
+    toast('به‌روز شد'); render();
+  }),
+  'open-my-class': el => busy(() => enterAccountClass(el.dataset.c)),
+
+  // ----- مدیر -----
+  'go-admin': () => busy(async () => {
+    const d = await store.get('admin:main', true);
+    if (d === undefined) return toast('اتصال به اینترنت برقرار نشد. دوباره امتحان کن.', true);
+    adminSetup = !d; view = 'adminAuth'; render();
+  }),
+  'admin-setup': () => busy(async () => {
+    const pw = val('adpw');
+    if (pw.length < 6) return toast('رمز مدیر باید حداقل ۶ حرف باشه.', true);
+    const d = await store.get('admin:main', true);
+    if (d !== null) return toast(d === undefined ? 'اتصال برقرار نشد.' : 'مدیر قبلاً ساخته شده.', true);
+    if (!(await store.set('admin:main', { pw: await hash('admin:' + pw), counter: 1000 }, true))) return toast('ذخیره نشد. اینترنت رو چک کن.', true);
+    admin = true; await loadAdminData(); view = 'admin'; render(); toast('رمز مدیر ساخته شد');
+  }),
+  'admin-login': () => busy(async () => {
+    const d = await store.get('admin:main', true);
+    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'هنوز مدیری ساخته نشده.', true);
+    if (d.pw !== (await hash('admin:' + val('adpw')))) return toast('رمز اشتباهه.', true);
+    admin = true;
+    if (await loadAdminData()) { view = 'admin'; render(); }
+  }),
+  'admin-logout': () => { admin = false; accts = []; allClasses = []; lastCreds = []; view = 'home'; render(); },
+  'admin-reload': () => busy(async () => { if (await loadAdminData()) { toast('به‌روز شد'); render(); } }),
+  'hide-creds': () => { lastCreds = []; render(); },
+  'copy-creds': () => copyText(lastCreds.map(x => `نام: ${x.name}  |  نام کاربری: ${x.u}  |  رمز: ${x.pw}`).join('\n'), 'کپی شد'),
+
+  'admin-create': () => busy(async () => {
+    const lines = val('anames').split('\n').map(x => x.trim()).filter(Boolean);
+    if (!lines.length) return toast('اول اسم‌ها رو بنویس.', true);
+    const clsCode = val('acls');
+    const adm = await store.get('admin:main', true);
+    if (!adm) return toast('اتصال به اینترنت برقرار نشد.', true);
+    let classDoc = null;
+    if (clsCode) {
+      classDoc = await store.get('class:' + clsCode, true);
+      if (!classDoc) return toast('کلاس پیدا نشد. لیست رو به‌روزرسانی کن.', true);
+    }
+    const existing = new Set(accts.map(a => a.u));
+    let counter = adm.counter || 1000;
+    const items = [];
+    for (const line of lines) {
+      const p = line.split(/[,،\t]/).map(x => x.trim());
+      const name = p[0].replace(/\s+/g, ' ');
+      if (!name || name.length > 40) return toast('اسم معتبر نیست: ' + line, true);
+      let u, pw;
+      if (p.length >= 3) {
+        u = p[1].toLowerCase(); pw = faToEn(p[2]);
+        if (!/^[a-z0-9]{3,20}$/.test(u)) return toast('نام کاربری باید ۳ تا ۲۰ حرف انگلیسی یا عدد باشه: ' + p[1], true);
+        if (existing.has(u)) return toast('این نام کاربری قبلاً هست: ' + u, true);
+        if (pw.length < 4) return toast('رمز باید حداقل ۴ حرف باشه: ' + name, true);
+      } else {
+        do { counter++; u = 'u' + counter; } while (existing.has(u));
+        pw = randStr(6);
+      }
+      existing.add(u); items.push({ name, u, pw });
+    }
+    const saved = await Promise.all(items.map(async it => store.set('acct:' + it.u, {
+      name: it.name, pw: await acctHash(it.u, it.pw), classes: clsCode ? [clsCode] : [], created: Date.now()
+    }, true)));
+    if (saved.some(ok => !ok)) return toast('بعضی حساب‌ها ذخیره نشد. لیست رو به‌روزرسانی کن و دوباره امتحان کن.', true);
+    adm.counter = counter; await store.set('admin:main', adm, true);
+    if (clsCode) {
+      classDoc.students = classDoc.students || [];
+      items.forEach(it => classDoc.students.push({ id: 'a' + it.u, name: it.name, pin: '', acct: it.u }));
+      await store.set('class:' + clsCode, classDoc, true);
+    }
+    lastCreds = items; newClsSel = clsCode;
+    await loadAdminData();
+    render(); toast(toFa(items.length) + ' حساب ساخته شد');
+    const el = document.getElementById('creds'); if (el) el.scrollIntoView();
+  }),
+
+  'acct-addcls': el => busy(async () => {
+    const u = el.dataset.u, code = val('addcls');
+    if (!code) return toast('اول کلاس رو از بالای لیست انتخاب کن.', true);
+    const a = await store.get('acct:' + u, true), d = await store.get('class:' + code, true);
+    if (!a || a.deleted || !d) return toast('حساب یا کلاس پیدا نشد.', true);
+    a.classes = a.classes || []; d.students = d.students || [];
+    if (!a.classes.includes(code)) a.classes.push(code);
+    if (!d.students.some(x => x.id === 'a' + u)) d.students.push({ id: 'a' + u, name: a.name, pin: '', acct: u });
+    if (!(await store.set('acct:' + u, a, true)) || !(await store.set('class:' + code, d, true))) return toast('ذخیره نشد.', true);
+    const row = accts.find(x => x.u === u); if (row) row.classes = a.classes;
+    toast('اضافه شد'); renderAcctList();
+  }),
+  'acct-rmcls': el => busy(async () => {
+    const u = el.dataset.u, code = el.dataset.c;
+    const a = await store.get('acct:' + u, true), d = await store.get('class:' + code, true);
+    if (!a) return toast('حساب پیدا نشد.', true);
+    a.classes = (a.classes || []).filter(c => c !== code);
+    if (!(await store.set('acct:' + u, a, true))) return toast('ذخیره نشد.', true);
+    if (d) { d.students = (d.students || []).filter(x => x.id !== 'a' + u); await store.set('class:' + code, d, true); }
+    const row = accts.find(x => x.u === u); if (row) row.classes = a.classes;
+    toast('از کلاس حذف شد'); renderAcctList();
+  }),
+  'acct-newpw': el => busy(async () => {
+    const u = el.dataset.u;
+    const a = await store.get('acct:' + u, true);
+    if (!a || a.deleted) return toast('حساب پیدا نشد.', true);
+    const pw = randStr(6);
+    a.pw = await acctHash(u, pw);
+    if (!(await store.set('acct:' + u, a, true))) return toast('ذخیره نشد.', true);
+    lastCreds = [{ name: a.name, u, pw }];
+    render(); toast('رمز جدید ساخته شد');
+    const c = document.getElementById('creds'); if (c) c.scrollIntoView();
+  }),
+  'acct-del': el => busy(async () => {
+    const u = el.dataset.u;
+    if (!confirm('این حساب حذف بشه؟ از همه‌ی کلاس‌ها هم برداشته میشه.')) return;
+    const a = await store.get('acct:' + u, true);
+    if (!a) return toast('حساب پیدا نشد.', true);
+    for (const code of (a.classes || [])) {
+      const d = await store.get('class:' + code, true);
+      if (d) { d.students = (d.students || []).filter(x => x.id !== 'a' + u); await store.set('class:' + code, d, true); }
+    }
+    a.deleted = true; a.classes = [];
+    if (!(await store.set('acct:' + u, a, true))) return toast('ذخیره نشد.', true);
+    accts = accts.filter(x => x.u !== u);
+    toast('حساب حذف شد'); render();
   })
 };
 
@@ -752,13 +1250,13 @@ $app.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (el && actions[el.dataset.act]) actions[el.dataset.act](el);
 });
+$app.addEventListener('input', e => { if (e.target.id === 'acctfilter') { acctFilter = e.target.value; renderAcctList(); } });
+$app.addEventListener('change', e => {
+  if (e.target.id === 'addcls') addClsSel = e.target.value;
+  if (e.target.id === 'acls') newClsSel = e.target.value;
+});
 
-// به‌روزرسانی خودکار صفحه‌ی دانش‌آموز هر ۶۰ ثانیه
-setInterval(async () => {
-  if (view !== 'student' || !cls || document.hidden) return;
-  const before = JSON.stringify(cls);
-  if (await openClass(cls.code, true) && JSON.stringify(cls) !== before) render();
-}, 60000);
+// به‌روزرسانی خودکار نداریم: فقط وقتی دانش‌آموز دکمه‌ی «به‌روزرسانی» رو بزنه، مشق‌ها دوباره خونده میشن.
 
 // ================= شروع =================
 (async () => {
@@ -766,7 +1264,20 @@ setInterval(async () => {
   let c = '';
   try { c = normCode(new URLSearchParams(location.search).get('c') || ''); } catch (e) {}
   render();
-  if (c) busy(() => enterStudent(c));
+  busy(async () => {
+    const saved = await store.get('acct-auth', false);
+    if (saved && saved.u) {
+      const d = await store.get('acct:' + saved.u, true);
+      if (d && !d.deleted && d.pw === saved.pw) {
+        acct = { u: saved.u, name: d.name, classes: d.classes || [] };
+        view = 'student';
+        await loadMyClasses();
+        if (c && acct.classes.includes(c)) return enterAccountClass(c);
+        return render();
+      }
+    }
+    if (c) return enterStudent(c);
+  });
 })();
 </script>
 </body>
