@@ -462,7 +462,7 @@ function render() {
 function renderHome() {
   $app.innerHTML = `
     ${cover(`<div class="label"><small>این دفتر مال کلاسه</small><h1>مشق‌های <mark>امروز</mark></h1></div>
-             <p class="sub">معلم می‌نویسه، دانش‌آموز می‌بینه.</p>`, topBar(null, `<button class="chip-btn" data-act="go-admin">مدیر</button>`))}
+             <p class="sub">معلم می‌نویسه، دانش‌آموز می‌بینه.</p>`, topBar(null, `<button class="chip-btn" data-act="go-admin">مدیریت برنامه</button>`))}
     ${banner()}
     <div class="wrap">
       <div class="choose">
@@ -767,11 +767,11 @@ function renderMyClasses() {
     <div class="wrap">
       <p class="hint">${IC.refresh}<span>برای دیدن کلاس‌ها و مشق‌های جدید روی دکمه‌ی «به‌روزرسانی» (بالای صفحه) بزنید.</span></p>
       ${myClasses.length ? `<div class="choose">${myClasses.map(c => `<button data-act="open-my-class" data-c="${esc(c.code)}"><span class="ic">${IC.book}</span><span><b>${esc(c.name)}</b><small>${c.active ? toFa(c.active) + ' مشق فعال' : 'مشق فعالی نیست'}</small></span></button>`).join('')}</div>`
-        : `<div class="sheet"><div class="empty"><b>هنوز به کلاسی اضافه نشدی</b>از مدیر یا معلمت بخواه حسابت رو به کلاس اضافه کنه.</div></div>`}
+        : `<div class="sheet"><div class="empty"><b>هنوز به کلاسی اضافه نشدی</b>از معلمت یا مدیریت برنامه بخواه حسابت رو به کلاس اضافه کنه.</div></div>`}
     </div>`;
 }
 
-// ---------- مدیر ----------
+// ---------- مدیریت برنامه ----------
 async function loadAdminData() {
   const [a, c] = await Promise.all([store.list('acct:'), store.list('class:')]);
   if (a === undefined || c === undefined) { toast('دریافت اطلاعات ممکن نشد. اینترنت رو چک کن.', true); return false; }
@@ -785,15 +785,15 @@ async function loadAdminData() {
 
 function renderAdminAuth() {
   $app.innerHTML = `
-    ${cover(`<div class="label"><small>بخش مدیر</small><h1>${adminSetup ? 'ساخت رمز <mark>مدیر</mark>' : 'ورود <mark>مدیر</mark>'}</h1></div>`, topBar('home'))}
+    ${cover(`<div class="label"><small>مدیریت برنامه</small><h1>${adminSetup ? 'ساخت رمز <mark>مدیریت</mark>' : 'ورود <mark>مدیریت</mark>'}</h1></div>`, topBar('home'))}
     ${banner()}
     <div class="wrap"><div class="panel" style="margin-top:0">
       ${adminSetup ? `
-        <p class="muted">هنوز مدیری ساخته نشده. یه رمز انتخاب کن (حداقل ۶ حرف). از این به بعد فقط با این رمز میشه حساب‌ها رو مدیریت کرد.</p>
-        <label for="adpw">رمز مدیر</label>
+        <p class="muted">هنوز رمزی برای مدیریت برنامه ساخته نشده. یه رمز انتخاب کن (حداقل ۶ حرف). از این به بعد فقط با این رمز میشه حساب‌ها رو مدیریت کرد.</p>
+        <label for="adpw">رمز مدیریت</label>
         <input id="adpw" type="password" autocomplete="new-password">
-        <button class="btn block" data-act="admin-setup">ساخت رمز مدیر</button>` : `
-        <label for="adpw" style="margin-top:0">رمز مدیر</label>
+        <button class="btn block" data-act="admin-setup">ساخت رمز مدیریت</button>` : `
+        <label for="adpw" style="margin-top:0">رمز مدیریت</label>
         <input id="adpw" type="password" autocomplete="current-password">
         <button class="btn block" data-act="admin-login">ورود</button>`}
     </div></div>`;
@@ -827,7 +827,7 @@ function renderAcctList() { const el = document.getElementById('acctlist'); if (
 
 function renderAdmin() {
   $app.innerHTML = `
-    ${cover(`<div class="label"><small>مدیر مدرسه</small><h1>حساب <mark>دانش‌آموزان</mark></h1></div>`,
+    ${cover(`<div class="label"><small>مدیریت برنامه</small><h1>حساب <mark>دانش‌آموزان</mark></h1></div>`,
       topBar(null, `<button class="chip-btn" data-act="admin-logout">${IC.out} خروج</button>`))}
     ${banner()}
     <div class="wrap">
@@ -859,17 +859,19 @@ function rosterPanel() {
   const sorted = [...st].sort((a, b) => a.name.localeCompare(b.name, 'fa'));
   return `<div class="panel">
     <h2>دانش‌آموزان</h2>
-    <p class="muted">${st.length ? 'هر بچه با اسم و رمز ۴ رقمی خودش وارد میشه و می‌تونی ببینی کی مشق رو دیده.' : 'تا وقتی لیست خالیه، همه بدون ورود مشق‌ها رو می‌بینن. با اضافه کردن اسم‌ها، ورود با رمز فعال میشه.'}</p>
+    <p class="muted">${st.length ? 'هر بچه با نام کاربری و رمز خودش وارد میشه و می‌تونی ببینی کی مشق رو دیده.' : 'تا وقتی لیست خالیه، همه بدون ورود مشق‌ها رو می‌بینن. اسم‌ها رو که اضافه کنی، برای هر بچه نام کاربری و رمز ساخته میشه.'}</p>
     <label for="newnames">اسم‌ها (هر اسم توی یه خط)</label>
     <textarea id="newnames" placeholder="علی رضایی&#10;سارا احمدی" style="min-height:90px"></textarea>
     <div class="row"><button class="btn" data-act="add-students">افزودن به لیست</button></div>
     ${st.length ? `<div class="row">
       <button class="btn ghost" data-act="toggle-roster">${rosterOpen ? 'بستن لیست' : 'لیست و رمزها (' + toFa(st.length) + ')'}</button>
-      <button class="btn ghost" data-act="copy-pins">${IC.copy} کپی رمزها</button></div>` : ''}
+      <button class="btn ghost" data-act="copy-pins">${IC.copy} کپی لیست</button></div>` : ''}
+    ${rosterOpen && st.some(x => x.acct) ? `<p class="muted" style="margin-top:10px">بچه‌ها از صفحه‌ی اول «من دانش‌آموزم» ← «ورود با حساب» وارد میشن. کنار هر اسم اول نام کاربری و بعد رمز نوشته شده.</p>` : ''}
     ${rosterOpen && st.length ? `<div class="roster">${sorted.map(x => `<div class="rrow">
       <span class="rname">${esc(x.name)}</span>
-      ${x.acct ? `<b class="rpin" dir="ltr" title="حساب">${esc(x.acct)}</b>`
-               : `<b class="rpin" dir="ltr">${toFa(x.pin)}</b><button class="btn ghost sm" data-act="new-pin" data-id="${esc(x.id)}">رمز جدید</button>`}
+      ${x.acct ? `<b class="rpin" dir="ltr">${esc(x.acct)}</b><b class="rpin" dir="ltr">${x.pw ? esc(x.pw) : '••••••'}</b>`
+               : `<b class="rpin" dir="ltr">${toFa(x.pin)}</b>`}
+      <button class="btn ghost sm" data-act="new-pin" data-id="${esc(x.id)}">رمز جدید</button>
       <button class="btn red sm" data-act="del-student" data-id="${esc(x.id)}">حذف</button></div>`).join('')}</div>` : ''}
   </div>`;
 }
@@ -1048,30 +1050,51 @@ const actions = {
   }),
 
   'toggle-roster': () => { rosterOpen = !rosterOpen; render(); },
-  'copy-pins': () => copyText((cls.students || []).filter(x => !x.acct).map(x => `${x.name}: ${toFa(x.pin)}`).join('\n'), 'لیست رمزها کپی شد'),
+  'copy-pins': () => copyText((cls.students || []).map(x => x.acct
+      ? `نام: ${x.name}  |  نام کاربری: ${x.acct}` + (x.pw ? `  |  رمز: ${x.pw}` : '')
+      : `نام: ${x.name}  |  رمز: ${toFa(x.pin)}`).join('\n'), 'لیست کپی شد'),
 
   'add-students': () => busy(async () => {
     const names = val('newnames').split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
     if (!names.length) return toast('اول اسم‌ها رو بنویس.', true);
     await openClass(session.code, true);
-    const st = cls.students;
-    const have = new Set(st.map(x => x.name));
-    let added = 0;
-    names.forEach(n => {
-      if (n.length > 40 || have.has(n)) return;
-      have.add(n);
-      let id; do { id = 's' + Math.random().toString(36).slice(2, 7); } while (st.some(x => x.id === id));
-      st.push({ id, name: n, pin: genPin() }); added++;
-    });
-    if (!added) return toast('این اسم‌ها قبلاً توی لیست بودن.', true);
-    if (await saveClass()) { rosterOpen = true; toast(toFa(added) + ' دانش‌آموز اضافه شد'); render(); }
+    const code = session.code;
+    const have = new Set(cls.students.map(x => x.name));
+    let counter = cls.acctCounter || 0, skipped = 0;
+    const added = [];
+    for (const n of names) {
+      if (n.length > 40 || have.has(n)) { skipped++; continue; }
+      let u, e;
+      do {
+        counter++; u = code + String(counter).padStart(2, '0');
+        e = await store.get('acct:' + u, true);
+        if (e === undefined) return toast('اتصال به اینترنت برقرار نشد.', true);
+      } while (e);
+      const pw = randStr(6);
+      const ok = await store.set('acct:' + u, { name: n, pw: await acctHash(u, pw), classes: [code], created: Date.now() }, true);
+      if (!ok) { toast('ساخت حساب «' + n + '» ناموفق بود.', true); break; }
+      have.add(n); added.push({ id: 'a' + u, name: n, pin: '', acct: u, pw });
+    }
+    if (!added.length) { if (skipped) toast('این اسم‌ها قبلاً توی لیست بودن.', true); return; }
+    cls.acctCounter = counter;
+    cls.students.push(...added);
+    if (await saveClass()) { rosterOpen = true; toast(toFa(added.length) + ' حساب ساخته شد'); render(); }
   }),
 
   'new-pin': el => busy(async () => {
     await openClass(session.code, true);
     const me = cls.students.find(x => x.id === el.dataset.id);
     if (!me) return;
-    me.pin = genPin();
+    if (me.acct) {
+      const a = await store.get('acct:' + me.acct, true);
+      if (!a || a.deleted) return toast('حساب پیدا نشد.', true);
+      const pw = randStr(6);
+      a.pw = await acctHash(me.acct, pw);
+      if (!(await store.set('acct:' + me.acct, a, true))) return toast('ذخیره نشد.', true);
+      me.pw = pw;
+    } else {
+      me.pin = genPin();
+    }
     if (await saveClass()) { toast('رمز جدید ساخته شد'); render(); }
   }),
 
@@ -1125,7 +1148,7 @@ const actions = {
   }),
   'open-my-class': el => busy(() => enterAccountClass(el.dataset.c)),
 
-  // ----- مدیر -----
+  // ----- مدیریت برنامه -----
   'go-admin': () => busy(async () => {
     const d = await store.get('admin:main', true);
     if (d === undefined) return toast('اتصال به اینترنت برقرار نشد. دوباره امتحان کن.', true);
@@ -1133,15 +1156,15 @@ const actions = {
   }),
   'admin-setup': () => busy(async () => {
     const pw = val('adpw');
-    if (pw.length < 6) return toast('رمز مدیر باید حداقل ۶ حرف باشه.', true);
+    if (pw.length < 6) return toast('رمز مدیریت باید حداقل ۶ حرف باشه.', true);
     const d = await store.get('admin:main', true);
-    if (d !== null) return toast(d === undefined ? 'اتصال برقرار نشد.' : 'مدیر قبلاً ساخته شده.', true);
+    if (d !== null) return toast(d === undefined ? 'اتصال برقرار نشد.' : 'رمز مدیریتیت قبلاً ساخته شده.', true);
     if (!(await store.set('admin:main', { pw: await hash('admin:' + pw), counter: 1000 }, true))) return toast('ذخیره نشد. اینترنت رو چک کن.', true);
-    admin = true; await loadAdminData(); view = 'admin'; render(); toast('رمز مدیر ساخته شد');
+    admin = true; await loadAdminData(); view = 'admin'; render(); toast('رمز مدیریتیت ساخته شد');
   }),
   'admin-login': () => busy(async () => {
     const d = await store.get('admin:main', true);
-    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'هنوز مدیری ساخته نشده.', true);
+    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'هنوز رمز مدیریتیت ساخته نشده.', true);
     if (d.pw !== (await hash('admin:' + val('adpw')))) return toast('رمز اشتباهه.', true);
     admin = true;
     if (await loadAdminData()) { view = 'admin'; render(); }
