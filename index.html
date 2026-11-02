@@ -732,7 +732,7 @@ function shareLink(code) {
 // ================= داده =================
 async function openClass(code, silent) {
   const data = await store.get('class:' + code, true);
-  if (!data) {
+  if (!data || data.archived) {
     if (!silent) { cls = null; toast(data === undefined ? 'اتصال به اینترنت برقرار نشد. دوباره امتحان کن.' : 'کلاسی با این کد پیدا نشد. کد رو دوباره چک کن.', true); }
     return false;
   }
@@ -743,6 +743,8 @@ async function openClass(code, silent) {
 
 async function saveClass() {
   const { code, ...data } = cls;
+  const cur = await store.get('class:' + code, true);          // اگه مدیریت کلاس رو حذف کرده، نذار دوباره فعال بشه
+  if (cur && cur.archived) { toast('این کلاس دیگه فعال نیست.', true); return false; }
   const ok = await store.set('class:' + code, data, true);
   if (!ok) toast('ذخیره نشد. اینترنت رو چک کن و دوباره امتحان کن.', true);
   return ok;
@@ -792,7 +794,7 @@ async function loadMyClasses() {
   myClasses = [];
   acct.classes.forEach((c, i) => {
     const d = docs[i];
-    if (d && (d.students || []).some(x => x.id === 'a' + acct.u)) {
+    if (d && !d.archived && (d.students || []).some(x => x.id === 'a' + acct.u)) {
       myClasses.push({ code: c, name: d.name, active: (d.homework || []).filter(h => { const df = dayDiff(h.due); return df === null || df >= 0; }).length });
     }
   });
@@ -828,7 +830,7 @@ async function loadAdminData() {
   const idOf = x => x.key.split(/[:_]/).pop();
   accts = a.filter(x => !x.data.deleted).map(x => ({ u: idOf(x), name: x.data.name || '', classes: x.data.classes || [] }))
     .sort((p, q) => p.name.localeCompare(q.name, 'fa'));
-  allClasses = c.map(x => ({ code: idOf(x), name: x.data.name || idOf(x), count: (x.data.students || []).length }))
+  allClasses = c.map(x => ({ code: idOf(x), name: x.data.name || idOf(x), count: (x.data.students || []).length, hw: (x.data.homework || []).length, archived: !!x.data.archived }))
     .sort((p, q) => p.name.localeCompare(q.name, 'fa'));
   return true;
 }
@@ -849,7 +851,7 @@ function renderAdminAuth() {
     </div></div>`;
 }
 
-const classOpts = (sel, first) => `<option value="">${first}</option>` + allClasses.map(c => `<option value="${esc(c.code)}"${c.code === sel ? ' selected' : ''}>${esc(c.name)} (${esc(c.code)})</option>`).join('');
+const classOpts = (sel, first) => `<option value="">${first}</option>` + allClasses.filter(c => !c.archived).map(c => `<option value="${esc(c.code)}"${c.code === sel ? ' selected' : ''}>${esc(c.name)} (${esc(c.code)})</option>`).join('');
 
 function credsPanel() {
   if (!lastCreds.length) return '';
@@ -862,21 +864,34 @@ function credsPanel() {
 function classPwPanel() {
   if (!lastClassPw) return '';
   const x = lastClassPw;
-  return `<div class="panel" id="classpw"><h2>رمز جدید معلم</h2>
-    <p class="muted">رمز رمزنگاری ذخیره میشه و بعد از این دیگه قابل دیدن نیست. همین الان به معلم بده. رمز قبلی دیگه کار نمی‌کنه.</p>
+  return `<div class="panel" id="classpw"><h2>${x.isNew ? 'کلاس جدید ساخته شد' : 'رمز جدید معلم'}</h2>
+    <p class="muted">${x.isNew ? 'کد کلاس و رمز معلم رو به معلم بده. رمز رمزنگاری ذخیره میشه و بعد از این دیگه قابل دیدن نیست.' : 'رمز رمزنگاری ذخیره میشه و بعد از این دیگه قابل دیدن نیست. همین الان به معلم بده. رمز قبلی دیگه کار نمی‌کنه.'}</p>
     <div class="roster"><div class="rrow"><span class="rname">${esc(x.name)}</span><b class="rpin" dir="ltr">${esc(x.code)}</b><b class="rpin" dir="ltr">${esc(x.pw)}</b></div></div>
     <p class="muted" style="margin-top:8px">اول کد کلاس و بعد رمز.</p>
     <div class="row"><button class="btn" data-act="copy-class-pw">${IC.copy} کپی</button><button class="btn ghost" data-act="hide-class-pw">بستن</button></div></div>`;
 }
 function classesPanel() {
+  const active = allClasses.filter(c => !c.archived), gone = allClasses.filter(c => c.archived);
   return `<div class="panel">
-    <h2>کلاس‌ها (${toFa(allClasses.length)})</h2>
-    <p class="muted">رمز معلم رمزنگاری ذخیره شده و قابل دیدن نیست. اگه معلمی رمزش رو فراموش کرد، برای کلاسش رمز جدید بساز و بهش بده.</p>
-    ${allClasses.length ? allClasses.map(c => `<div class="arow">
+    <h2>کلاس‌ها (${toFa(active.length)})</h2>
+    <p class="muted">رمز معلم رمزنگاری ذخیره شده و قابل دیدن نیست. اگه معلمی رمزش رو فراموش کرد، برای کلاسش رمز جدید بساز.</p>
+    <label for="newclsname">اسم کلاس جدید</label>
+    <input id="newclsname" maxlength="40" placeholder="مثلاً ششم ب" autocomplete="off">
+    <label for="newclspw">رمز معلم (اختیاری)</label>
+    <input id="newclspw" class="ltr" autocomplete="off" placeholder="خالی بذاری خودکار ساخته میشه">
+    <button class="btn block" data-act="class-create">ساخت کلاس</button>
+    <div style="margin-top:16px">${active.length ? active.map(c => `<div class="arow">
       <div class="ahead"><b>${esc(c.name)}</b><span class="rpin" dir="ltr">${esc(c.code)}</span></div>
-      <p class="muted" style="margin:2px 0 6px">${toFa(c.count)} دانش‌آموز</p>
-      <div class="acts"><button class="btn ghost sm" data-act="class-newpw" data-c="${esc(c.code)}">رمز جدید معلم</button></div></div>`).join('')
-      : `<div class="empty"><b>هنوز کلاسی ساخته نشده</b></div>`}
+      <p class="muted" style="margin:2px 0 6px">${toFa(c.count)} دانش‌آموز و ${toFa(c.hw)} مشق</p>
+      <div class="acts">
+        <button class="btn ghost sm" data-act="class-newpw" data-c="${esc(c.code)}">رمز جدید معلم</button>
+        <button class="btn red sm" data-act="class-archive" data-c="${esc(c.code)}">حذف کلاس</button></div></div>`).join('')
+      : `<div class="empty"><b>هنوز کلاسی ساخته نشده</b></div>`}</div>
+    ${gone.length ? `<h2 style="margin-top:22px">کلاس‌های حذف‌شده (${toFa(gone.length)})</h2>
+      <p class="muted">از دید معلم و دانش‌آموزها مخفی هستن ولی اطلاعاتشون می‌مونه. با «برگردوندن» دوباره فعال میشن.</p>
+      ${gone.map(c => `<div class="arow">
+        <div class="ahead"><b>${esc(c.name)}</b><span class="rpin" dir="ltr">${esc(c.code)}</span></div>
+        <div class="acts"><button class="btn ghost sm" data-act="class-restore" data-c="${esc(c.code)}">برگردوندن</button></div></div>`).join('')}` : ''}
   </div>`;
 }
 
@@ -1253,6 +1268,40 @@ const actions = {
   'hide-creds': () => { lastCreds = []; render(); },
   'hide-class-pw': () => { lastClassPw = null; render(); },
   'copy-class-pw': () => copyText(`کلاس: ${lastClassPw.name}\nکد کلاس: ${lastClassPw.code}\nرمز معلم: ${lastClassPw.pw}`, 'کپی شد'),
+  'class-create': () => busy(async () => {
+    const name = val('newclsname').trim();
+    let pw = val('newclspw');
+    if (!name) return toast('اسم کلاس رو بنویس.', true);
+    if (pw && pw.length < 4) return toast('رمز باید حداقل ۴ حرف باشه.', true);
+    if (!pw) pw = randStr(6);
+    let code, e;
+    do {
+      code = genCode(); e = await store.get('class:' + code, true);
+      if (e === undefined) return toast('اتصال به اینترنت برقرار نشد.', true);
+    } while (e);
+    if (!(await store.set('class:' + code, { name, pw: await hash(pw), homework: [], students: [] }, true))) return toast('ساخته نشد. اینترنت رو چک کن.', true);
+    lastClassPw = { name, code, pw, isNew: true };
+    await loadAdminData(); render(); toast('کلاس ساخته شد');
+    const c = document.getElementById('classpw'); if (c) c.scrollIntoView();
+  }),
+  'class-archive': el => busy(async () => {
+    const code = el.dataset.c;
+    if (!confirm('این کلاس حذف بشه؟ از دید معلم و دانش‌آموزها مخفی میشه. اطلاعاتش می‌مونه و می‌تونی از «کلاس‌های حذف‌شده» برش گردونی.')) return;
+    const d = await store.get('class:' + code, true);
+    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'کلاس پیدا نشد.', true);
+    d.archived = true;
+    if (!(await store.set('class:' + code, d, true))) return toast('ذخیره نشد.', true);
+    if (lastClassPw && lastClassPw.code === code) lastClassPw = null;
+    await loadAdminData(); render(); toast('کلاس حذف شد');
+  }),
+  'class-restore': el => busy(async () => {
+    const code = el.dataset.c;
+    const d = await store.get('class:' + code, true);
+    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'کلاس پیدا نشد.', true);
+    delete d.archived;
+    if (!(await store.set('class:' + code, d, true))) return toast('ذخیره نشد.', true);
+    await loadAdminData(); render(); toast('کلاس برگشت');
+  }),
   'class-newpw': el => busy(async () => {
     const code = el.dataset.c;
     if (!confirm('رمز معلم این کلاس عوض بشه؟ رمز قبلی دیگه کار نمی‌کنه.')) return;
@@ -1276,7 +1325,7 @@ const actions = {
     let classDoc = null;
     if (clsCode) {
       classDoc = await store.get('class:' + clsCode, true);
-      if (!classDoc) return toast('کلاس پیدا نشد. لیست رو به‌روزرسانی کن.', true);
+      if (!classDoc || classDoc.archived) return toast('کلاس پیدا نشد. لیست رو به‌روزرسانی کن.', true);
     }
     const existing = new Set(accts.map(a => a.u));
     let counter = adm.counter || 1000;
@@ -1317,7 +1366,7 @@ const actions = {
     const u = el.dataset.u, code = val('addcls');
     if (!code) return toast('اول کلاس رو از بالای لیست انتخاب کن.', true);
     const a = await store.get('acct:' + u, true), d = await store.get('class:' + code, true);
-    if (!a || a.deleted || !d) return toast('حساب یا کلاس پیدا نشد.', true);
+    if (!a || a.deleted || !d || d.archived) return toast('حساب یا کلاس پیدا نشد.', true);
     a.classes = a.classes || []; d.students = d.students || [];
     if (!a.classes.includes(code)) a.classes.push(code);
     if (!d.students.some(x => x.id === 'a' + u)) d.students.push({ id: 'a' + u, name: a.name, pin: '', acct: u });
