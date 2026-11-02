@@ -440,7 +440,7 @@ let view = 'home', tab = 'login', session = null, cls = null, editId = null;
 let studentCode = '', filter = 'all', subjFilter = '', doneSet = new Set(), lastCode = '', lastSync = 0;
 let student = null, rosterOpen = false, report = null, actQueue = Promise.resolve();
 let acct = null, myClasses = [];
-let admin = false, adminSetup = false, accts = [], allClasses = [], lastCreds = [], acctFilter = '', addClsSel = '', newClsSel = '';
+let admin = false, adminSetup = false, accts = [], allClasses = [], lastCreds = [], acctFilter = '', addClsSel = '', newClsSel = '', lastClassPw = null;
 
 function banner() {
   return configured ? '' : `<div class="banner">برنامه هنوز به دیتابیس وصل نشده، پس اطلاعات فقط تا بستن این صفحه می‌مونه. (دو مقدار بالای فایل رو پر کن.)</div>`;
@@ -809,6 +809,27 @@ function credsPanel() {
     <div class="row"><button class="btn" data-act="copy-creds">${IC.copy} کپی همه</button><button class="btn ghost" data-act="hide-creds">بستن</button></div></div>`;
 }
 
+function classPwPanel() {
+  if (!lastClassPw) return '';
+  const x = lastClassPw;
+  return `<div class="panel" id="classpw"><h2>رمز جدید معلم</h2>
+    <p class="muted">رمز رمزنگاری ذخیره میشه و بعد از این دیگه قابل دیدن نیست. همین الان به معلم بده. رمز قبلی دیگه کار نمی‌کنه.</p>
+    <div class="roster"><div class="rrow"><span class="rname">${esc(x.name)}</span><b class="rpin" dir="ltr">${esc(x.code)}</b><b class="rpin" dir="ltr">${esc(x.pw)}</b></div></div>
+    <p class="muted" style="margin-top:8px">اول کد کلاس و بعد رمز.</p>
+    <div class="row"><button class="btn" data-act="copy-class-pw">${IC.copy} کپی</button><button class="btn ghost" data-act="hide-class-pw">بستن</button></div></div>`;
+}
+function classesPanel() {
+  return `<div class="panel">
+    <h2>کلاس‌ها (${toFa(allClasses.length)})</h2>
+    <p class="muted">رمز معلم رمزنگاری ذخیره شده و قابل دیدن نیست. اگه معلمی رمزش رو فراموش کرد، برای کلاسش رمز جدید بساز و بهش بده.</p>
+    ${allClasses.length ? allClasses.map(c => `<div class="arow">
+      <div class="ahead"><b>${esc(c.name)}</b><span class="rpin" dir="ltr">${esc(c.code)}</span></div>
+      <p class="muted" style="margin:2px 0 6px">${toFa(c.count)} دانش‌آموز</p>
+      <div class="acts"><button class="btn ghost sm" data-act="class-newpw" data-c="${esc(c.code)}">رمز جدید معلم</button></div></div>`).join('')
+      : `<div class="empty"><b>هنوز کلاسی ساخته نشده</b></div>`}
+  </div>`;
+}
+
 function acctRows() {
   const f = acctFilter.trim().toLowerCase();
   const list = accts.filter(a => !f || a.name.toLowerCase().includes(f) || a.u.includes(f));
@@ -841,6 +862,8 @@ function renderAdmin() {
         <button class="btn block" data-act="admin-create">ساخت حساب‌ها</button>
       </div>
       ${credsPanel()}
+      ${classPwPanel()}
+      ${classesPanel()}
       <div class="panel">
         <h2>حساب‌ها (${toFa(accts.length)})</h2>
         <div class="row"><button class="btn ghost" data-act="admin-reload">${IC.refresh} به‌روزرسانی لیست</button></div>
@@ -1169,9 +1192,23 @@ const actions = {
     admin = true;
     if (await loadAdminData()) { view = 'admin'; render(); }
   }),
-  'admin-logout': () => { admin = false; accts = []; allClasses = []; lastCreds = []; view = 'home'; render(); },
+  'admin-logout': () => { admin = false; accts = []; allClasses = []; lastCreds = []; lastClassPw = null; view = 'home'; render(); },
   'admin-reload': () => busy(async () => { if (await loadAdminData()) { toast('به‌روز شد'); render(); } }),
   'hide-creds': () => { lastCreds = []; render(); },
+  'hide-class-pw': () => { lastClassPw = null; render(); },
+  'copy-class-pw': () => copyText(`کلاس: ${lastClassPw.name}\nکد کلاس: ${lastClassPw.code}\nرمز معلم: ${lastClassPw.pw}`, 'کپی شد'),
+  'class-newpw': el => busy(async () => {
+    const code = el.dataset.c;
+    if (!confirm('رمز معلم این کلاس عوض بشه؟ رمز قبلی دیگه کار نمی‌کنه.')) return;
+    const d = await store.get('class:' + code, true);
+    if (!d) return toast(d === undefined ? 'اتصال به اینترنت برقرار نشد.' : 'کلاس پیدا نشد.', true);
+    const pw = randStr(6);
+    d.pw = await hash(pw);
+    if (!(await store.set('class:' + code, d, true))) return toast('ذخیره نشد.', true);
+    lastClassPw = { name: d.name, code, pw };
+    render(); toast('رمز جدید ساخته شد');
+    const c = document.getElementById('classpw'); if (c) c.scrollIntoView();
+  }),
   'copy-creds': () => copyText(lastCreds.map(x => `نام: ${x.name}  |  نام کاربری: ${x.u}  |  رمز: ${x.pw}`).join('\n'), 'کپی شد'),
 
   'admin-create': () => busy(async () => {
