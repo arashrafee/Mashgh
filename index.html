@@ -232,11 +232,33 @@
   #toast {
     position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translate(-50%, 30px);
     background: var(--ink); color: var(--paper); padding: 10px 20px; border-radius: 99px; font-size: 14px; max-width: 90%;
-    opacity: 0; pointer-events: none; transition: all .25s; z-index: 60; text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .35s cubic-bezier(.2,.9,.3,1.15); z-index: 60; text-align: center;
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #toast.err { background: var(--margin); color: #fff; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+  /* ---- انیمیشن‌های ملایم ---- */
+  .rise { animation: rise .42s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+  @keyframes fadein { from { opacity: 0; } }
+  @keyframes labelin { from { opacity: 0; transform: translateY(-8px) rotate(-1.2deg); } }
+  @keyframes notein { from { opacity: 0; transform: translateY(10px) rotate(-3deg); } }
+  @keyframes tickpop { 0% { transform: scale(.7); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+  @keyframes dim { from { opacity: 1; } }
+  @keyframes fresh { from { background-color: color-mix(in srgb, var(--mark) 55%, transparent); } }
+  @keyframes dropin { from { opacity: 0; transform: translateY(-6px); } }
+  #app.enter > .cover { animation: fadein .35s ease backwards; }
+  #app.enter .label { animation: labelin .55s cubic-bezier(.2, .8, .2, 1) .06s backwards; }
+  #app.enter .note { animation: notein .5s cubic-bezier(.2, .8, .2, 1) .15s backwards; }
+  .tick, .btn, .chip-btn, .choose button, .seg button, .chips button, .cd, .cal-head button {
+    transition: transform .15s ease, background-color .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .tick.pop { animation: tickpop .4s cubic-bezier(.3, 1.6, .5, 1); }
+  .entry.flash .body, .entry.flash .subj { animation: dim .5s ease; }
+  .entry.fresh { animation: fresh 2.2s ease-out; }
+  .cal:not([hidden]) { animation: dropin .22s ease; }
+  details.rep[open] > p { animation: fadein .25s ease; }
+  @media (hover: hover) { .choose button:hover, .btn:not(.ghost):not(.red):hover { transform: translateY(-1px); } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
 <body>
@@ -455,8 +477,36 @@ function topBar(backAct, right) {
 }
 
 // ================= نمایش =================
+const RISE_SEL = '.wrap > :not(.sheet):not(.note):not(.choose), .choose button, .sheet .day, .sheet .entry, .sheet .empty';
+let lastScreen = '', prevPct = 0, freshIds = new Set();
+
 function render() {
+  const key = [view, cls ? cls.code : '', student ? student.id : '', acct ? acct.u : ''].join('|');
+  const entering = key !== lastScreen;
+  lastScreen = key;
   ({ home: renderHome, student: renderStudent, teacherAuth: renderTeacherAuth, teacher: renderTeacher, adminAuth: renderAdminAuth, admin: renderAdmin })[view]();
+  decorate(entering);
+}
+
+// انیمیشن‌های ملایم: ورود تدریجی فقط وقتی صفحه عوض میشه (نه با هر تیک یا فیلتر)
+function decorate(entering) {
+  $app.classList.toggle('enter', entering);
+  if (entering) {
+    prevPct = 0;
+    $app.querySelectorAll(RISE_SEL).forEach((el, i) => { el.style.setProperty('--i', Math.min(i, 10)); el.classList.add('rise'); });
+  }
+  const f = $app.querySelector('.fill');
+  if (f) {                                   // نوار پیشرفت از مقدار قبلی تا مقدار جدید پر میشه
+    const target = f.style.width;
+    f.style.width = prevPct + '%';
+    void f.offsetWidth;
+    f.style.width = target;
+    prevPct = parseInt(target, 10) || 0;
+  }
+  if (freshIds.size) {                       // مشق‌های تازه چند ثانیه برجسته میشن
+    freshIds.forEach(id => { const e = $app.querySelector(`.entry[data-hw="${id}"]`); if (e) e.classList.add('fresh'); });
+    freshIds = new Set();
+  }
 }
 
 function renderHome() {
@@ -572,7 +622,7 @@ function entry(h, teacher) {
   const isDone = !teacher && doneSet.has(h.id);
   const past = dayDiff(h.due) !== null && dayDiff(h.due) < 0;
   const url = safeUrl(h.link || '');
-  return `<div class="entry ${isDone ? 'done' : ''} ${past ? 'past' : ''}" style="--h:${hueOf(h.subject)}">
+  return `<div class="entry ${isDone ? 'done' : ''} ${past ? 'past' : ''}" data-hw="${h.id}" style="--h:${hueOf(h.subject)}">
     <div class="margin">${teacher ? '' : `<button class="tick" data-act="toggle" data-id="${h.id}" aria-pressed="${isDone}" aria-label="انجام شد">${IC.check}</button>`}</div>
     <div class="content">
       <span class="subj">${esc(h.subject)}</span>
@@ -727,7 +777,7 @@ async function syncActivity() {
   a.seen = a.seen || {}; a.done = a.done || {};
   const now = Date.now();
   let changed = !act;
-  cls.homework.forEach(h => { if (!a.seen[h.id]) { a.seen[h.id] = now; changed = true; } });
+  cls.homework.forEach(h => { if (!a.seen[h.id]) { a.seen[h.id] = now; changed = true; if (act) freshIds.add(h.id); } });
   if (now - (a.last || 0) > 30 * 60 * 1000) changed = true;
   doneSet = new Set(Object.keys(a.done));
   if (changed) { a.last = now; await store.set(actKey(), a, true); }
@@ -947,7 +997,9 @@ const actions = {
     await enterStudent(code);
   }),
   'refresh': () => busy(async () => {
+    const before = new Set((cls.homework || []).map(h => h.id));
     if (await openClass(cls.code)) {
+      cls.homework.forEach(h => { if (!before.has(h.id)) freshIds.add(h.id); });
       if (student) {
         if (cls.students.some(x => x.id === student.id)) await syncActivity();
         else { student = null; if (acct) { cls = null; toast('تو دیگه توی این کلاس نیستی.', true); } }
@@ -976,6 +1028,10 @@ const actions = {
     const nowDone = !doneSet.has(id);
     nowDone ? doneSet.add(id) : doneSet.delete(id);
     render();
+    if (nowDone) {
+      const t = $app.querySelector(`[data-act="toggle"][data-id="${id}"]`);
+      if (t) { t.classList.add('pop'); const en = t.closest('.entry'); if (en) en.classList.add('flash'); }
+    }
     if (!student) { store.set(doneKey(cls.code), [...doneSet], false); return; }
     actQueue = actQueue.then(async () => {
       const act = await store.get(actKey(), true);
